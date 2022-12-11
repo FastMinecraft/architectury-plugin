@@ -10,22 +10,28 @@ plugins {
 
 group "me.shedaniel"
 
-def isSnapshot = System.getenv("PR_NUM") != null
-def runNumber = (System.getenv("GITHUB_RUN_NUMBER") == null ? "9999" : System.getenv("GITHUB_RUN_NUMBER"))
-
-if (!isSnapshot) {
-    version = base_version + "." + runNumber
-} else {
-    version = base_version + "-PR." + System.getenv("PR_NUM") + "." + runNumber
-}
+//def isSnapshot = System.getenv("PR_NUM") != null
+//def runNumber = (System.getenv("GITHUB_RUN_NUMBER") == null ? "9999" : System.getenv("GITHUB_RUN_NUMBER"))
+//
+//if (!isSnapshot) {
+//    version = base_version + "." + runNumber
+//} else {
+//    version = base_version + "-PR." + System.getenv("PR_NUM") + "." + runNumber
+//}
+version = base_version + "-SNAPSHOT"
 
 def pluginId = "architectury-plugin"
 
 logger.lifecycle(":building architectury plugin v${version}")
 
-sourceCompatibility = targetCompatibility = 1.8
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}
 
 repositories {
+    maven { url "https://maven.fastmc.dev/" }
     maven { url "https://maven.fabricmc.net/" }
     maven { url "https://maven.minecraftforge.net/" }
     maven { url "https://maven.shedaniel.me/" }
@@ -83,7 +89,7 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.3.72"
     implementation "org.jetbrains.kotlin:kotlin-reflect:1.3.72"
     implementation "gradle.plugin.org.jetbrains.gradle.plugin.idea-ext:gradle-idea-ext:0.10"
-    implementation "dev.architectury:architectury-transformer:$transformer_version"
+    implementation "dev.architectury:architectury-transformer:5.2-SNAPSHOT"
     loom06CompileOnly "me.shedaniel:forgified-fabric-loom:$loom_version_06"
     loom09CompileOnly "dev.architectury:architectury-loom:$loom_version_09"
     loom010LegacyCompileOnly "dev.architectury:architectury-loom:$loom_version_010Legacy"
