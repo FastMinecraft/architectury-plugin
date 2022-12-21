@@ -1,2 +1,8 @@
-rootProject.name = 'architectury-plugin'
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url "https://maven.fastmc.dev/" }
+    }
+}
 
+rootProject.name = 'architectury-plugin'
