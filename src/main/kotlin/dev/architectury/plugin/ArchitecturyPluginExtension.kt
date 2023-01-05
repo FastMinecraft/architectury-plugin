@@ -361,7 +361,7 @@ open class ArchitectPluginExtension(val project: Project) {
 
         for (loader in settings.loaders) {
             project.configurations.maybeCreate("transformProduction${loader.titledId}")
-            project.tasks.register("transformProduction${loader.titledId}", TransformingTask::class.java) {
+            project.tasks.create("transformProduction${loader.titledId}", TransformingTask::class.java) {
                 it.group = "Architectury"
                 it.platform = loader.id
                 loader.transformProduction(it, loom)
