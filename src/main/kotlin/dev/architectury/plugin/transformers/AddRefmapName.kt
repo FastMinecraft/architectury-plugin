@@ -10,6 +10,7 @@ import dev.architectury.transformer.transformers.base.edit.TransformerContext
 import java.io.ByteArrayInputStream
 
 class AddRefmapName : AssetEditTransformer {
+    @Transient
     val gson = GsonBuilder().setPrettyPrinting().create()
     override fun doEdit(context: TransformerContext, output: FileAccess) {
         val mixins = mutableSetOf<String>()

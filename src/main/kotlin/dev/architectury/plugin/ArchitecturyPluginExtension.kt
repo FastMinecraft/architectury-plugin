@@ -354,7 +354,6 @@ open class ArchitectPluginExtension(val project: Project) {
             }
         }
 
-        val buildTask = project.tasks.getByName("build")
         val jarTask = project.tasks.getByName("jar") {
             it as AbstractArchiveTask
             it.archiveClassifier.set("dev")
@@ -362,24 +361,20 @@ open class ArchitectPluginExtension(val project: Project) {
 
         for (loader in settings.loaders) {
             project.configurations.maybeCreate("transformProduction${loader.titledId}")
-            val transformProductionTask =
-                project.tasks.register("transformProduction${loader.titledId}", TransformingTask::class.java) {
-                    it.group = "Architectury"
-                    it.platform = loader.id
-                    loader.transformProduction(it, loom)
+            project.tasks.register("transformProduction${loader.titledId}", TransformingTask::class.java) {
+                it.group = "Architectury"
+                it.platform = loader.id
+                loader.transformProduction(it, loom)
 
-                    it.archiveClassifier.set("transformProduction${loader.titledId}")
-                    it.input.set(jarTask.archiveFile)
+                it.archiveClassifier.set("transformProduction${loader.titledId}")
+                it.input.set(jarTask.archiveFile)
 
-                    project.artifacts.add("transformProduction${loader.titledId}", it)
-                    it.dependsOn(jarTask)
-                    buildTask.dependsOn(it)
-                }
-
-            transformProductionTask.get().archiveFile.get().asFile.takeUnless { it.exists() }?.createEmptyJar()
+                project.artifacts.add("transformProduction${loader.titledId}", it)
+                it.dependsOn(jarTask)
+            }
         }
 
-        val remapJarTask = project.tasks.getByName("remapJar") {
+        project.tasks.getByName("remapJar") {
             it as Jar
 
             it.archiveClassifier.set("")
@@ -401,7 +396,7 @@ open class ArchitectPluginExtension(val project: Project) {
                     }
                 }
             })
-        } as Jar
+        }
     }
 }
 

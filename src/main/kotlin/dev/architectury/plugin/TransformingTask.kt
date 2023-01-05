@@ -9,18 +9,21 @@ import dev.architectury.transformer.util.Logger
 import org.gradle.api.Project
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.jvm.tasks.Jar
+import org.gradle.workers.WorkAction
+import org.gradle.workers.WorkParameters
+import org.gradle.workers.WorkerExecutor
 import java.io.File
 import java.nio.file.Path
 import java.util.*
-import java.util.function.BiConsumer
+import javax.inject.Inject
 import kotlin.properties.Delegates
-import kotlin.time.ExperimentalTime
 
-open class TransformingTask : Jar() {
+abstract class TransformingTask : Jar() {
     @InputFile
     val input: RegularFileProperty = GradleSupport.getFileProperty(project)
 
@@ -30,26 +33,22 @@ open class TransformingTask : Jar() {
     @Internal
     var platform: String? = null
 
-    @ExperimentalTime
+    @get:Inject
+    abstract val workerExecutor: WorkerExecutor
+
     @TaskAction
     fun doTask() {
-        val input: Path = this.input.asFile.get().toPath()
-        val output: Path = this.archiveFile.get().asFile.toPath()
+        workerExecutor.noIsolation().submit(TransformAction::class.java) {
+            val extension = project.extensions.getByType(ArchitectPluginExtension::class.java)
+            val properties = mutableMapOf<String, String>()
+            extension.properties(platform ?: throw NullPointerException("No Platform specified")).toMap(properties)
+            properties[BuiltinProperties.LOCATION] = project.file(".gradle").absolutePath
 
-        val extension = project.extensions.getByType(ArchitectPluginExtension::class.java)
-        val properties = mutableMapOf<String, String>()
-        extension.properties(platform ?: throw NullPointerException("No Platform specified")).toMap(properties)
-        properties[BuiltinProperties.LOCATION] = project.file(".gradle").absolutePath
-        val logger = Logger(
-            properties.getOrDefault(BuiltinProperties.LOCATION, System.getProperty("user.dir")),
-            properties.getOrDefault(BuiltinProperties.VERBOSE, "false") == "true"
-        )
-        logger.debug("")
-        logger.debug("============================")
-        logger.debug("Transforming from $input to $output")
-        logger.debug("============================")
-        logger.debug("")
-        Transform.runTransformers(input, output, transformers.get(), properties)
+            it.input.set(this.input)
+            it.output.set(archiveFile)
+            it.transformers.set(transformers)
+            it.properties.set(properties)
+        }
     }
 
     operator fun invoke(transformer: Transformer) {
@@ -60,19 +59,40 @@ open class TransformingTask : Jar() {
         transformers.add(transformer)
     }
 
-    fun add(transformer: Transformer, config: BiConsumer<Path, MutableMap<String, Any>>) {
+    fun add(transformer: Transformer, config: MutableMap<String, Any>.(file: Path) -> Unit) {
         transformers.add(project.provider {
             val properties = mutableMapOf<String, Any>()
-            config.accept(input.asFile.get().toPath(), properties)
+            config(properties, input.asFile.get().toPath())
             transformer.supplyProperties(Gson().toJsonTree(properties).asJsonObject)
             transformer
         })
     }
 
-    fun add(transformer: Transformer, config: MutableMap<String, Any>.(file: Path) -> Unit) {
-        add(transformer, BiConsumer { file, map ->
-            config(map, file)
-        })
+    abstract class TransformParams : WorkParameters {
+        abstract val input: RegularFileProperty
+        abstract val output: RegularFileProperty
+        abstract val transformers: ListProperty<Transformer>
+        abstract val properties: MapProperty<String, String>
+    }
+
+    abstract class TransformAction : WorkAction<TransformParams> {
+        override fun execute() {
+            val input = parameters.input.asFile.get().toPath()
+            val output = parameters.output.asFile.get().toPath()
+            val transformers = parameters.transformers.get()
+            val properties = parameters.properties.get()
+
+            val logger = Logger(
+                properties.getOrDefault(BuiltinProperties.LOCATION, System.getProperty("user.dir")),
+                properties.getOrDefault(BuiltinProperties.VERBOSE, "false") == "true"
+            )
+            logger.debug("")
+            logger.debug("============================")
+            logger.debug("Transforming from $input to $output")
+            logger.debug("============================")
+            logger.debug("")
+            Transform.runTransformers(input, output, transformers, properties)
+        }
     }
 }
 
