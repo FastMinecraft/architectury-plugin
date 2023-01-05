@@ -98,7 +98,7 @@ dependencies {
     loom011CompileOnly "dev.architectury:architectury-loom:$loom_version_011"
     loom011CompileOnly "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.5.10"
     loom011CompileOnly "org.jetbrains.kotlin:kotlin-reflect:1.5.10"
-    implementation "dev.architectury:tiny-remapper:1.1.0"
+    implementation "dev.architectury:tiny-remapper:1.8-SNAPSHOT"
     implementation "com.google.code.gson:gson:2.8.5"
 }
 
