@@ -1,11 +1,12 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id "org.jetbrains.kotlin.jvm" version "1.6.10"
     id "java"
     id "idea"
     id "eclipse"
     id "maven-publish"
+    id "java-gradle-plugin"
+    id "org.jetbrains.kotlin.jvm" version "1.6.10"
     id "dev.fastmc.maven-repo" version "1.0.0"
 }
 
@@ -39,8 +40,6 @@ repositories {
     gradlePluginPortal()
     mavenLocal()
 }
-
-apply plugin: 'java-gradle-plugin'
 
 sourceSets {
     loom06 {
@@ -132,16 +131,6 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 }
 
 publishing {
-    publications {
-        plugin(MavenPublication) {
-            groupId pluginId
-            artifactId pluginId + '.gradle.plugin'
-            
-            from components.java
-            artifact(sourcesJar)
-        }
-    }
-
     repositories {
         if (System.getenv("MAVEN_PASS") != null) {
             maven {
