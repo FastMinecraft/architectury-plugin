@@ -10,9 +10,9 @@ import dev.architectury.transformer.transformers.base.edit.TransformerContext
 import java.io.ByteArrayInputStream
 
 class AddRefmapName : AssetEditTransformer {
-    @Transient
-    val gson = GsonBuilder().setPrettyPrinting().create()
     override fun doEdit(context: TransformerContext, output: FileAccess) {
+        val gson = GsonBuilder().setPrettyPrinting().create()
+
         val mixins = mutableSetOf<String>()
         output.handle { path, bytes ->
             // Check JSON file in root directory
