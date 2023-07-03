@@ -6,7 +6,7 @@ plugins {
     id "eclipse"
     id "maven-publish"
     id "java-gradle-plugin"
-    id "org.jetbrains.kotlin.jvm" version "1.6.10"
+    id "org.jetbrains.kotlin.jvm" version "1.8.22"
     id "dev.fastmc.maven-repo" version "1.0.0"
 }
 
@@ -28,7 +28,7 @@ logger.lifecycle(":building architectury plugin v${version}")
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(8)
+        languageVersion = JavaLanguageVersion.of(17)
     }
     withSourcesJar()
 }
@@ -102,9 +102,9 @@ dependencies {
     implementation "com.google.code.gson:gson:2.8.5"
 }
 
-tasks.withType(KotlinCompile) {
+tasks.withType(KotlinCompile).configureEach {
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
         freeCompilerArgs = ['-Xjvm-default=compatibility']
     }
 }
