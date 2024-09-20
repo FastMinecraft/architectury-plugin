@@ -50,6 +50,14 @@ class LoomInterface11(private val project: Project) : LoomInterface {
             extension.setGenerateSrgTiny(value)
         }
 
+    override val legacyMixinApEnabled: Boolean
+        get() = extension.mixin.useLegacyMixinAp.get()
+    
+    
+    override val addRefmapForForge: Boolean
+        // Awful hack to check if the version >= 1.20.5, we don't get any info of forge version in common
+        get() = !extension.minecraftProvider.versionInfo.isVersionOrNewer("2024-04-23T00:00:00+00:00")
+
     override val generateTransformerPropertiesInTask = true
 
     override fun settingsPostEdit(action: (config: LoomInterface.LoomRunConfig) -> Unit) {

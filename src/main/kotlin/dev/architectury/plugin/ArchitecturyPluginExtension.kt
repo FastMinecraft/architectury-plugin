@@ -2,6 +2,7 @@
 
 package dev.architectury.plugin
 
+import dev.architectury.plugin.ModLoader.Companion.applyNeoForgeForgeLikeProd
 import dev.architectury.plugin.loom.LoomInterface
 import dev.architectury.plugin.utils.GradleSupport
 import dev.architectury.transformer.Transformer
@@ -31,7 +32,7 @@ import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 
 open class ArchitectPluginExtension(val project: Project) {
-    var transformerVersion = "5.2.75"
+    var transformerVersion = "5.2.87"
     var injectablesVersion = "1.0.10"
     var minecraft = ""
     private var compileOnly = false
@@ -88,7 +89,7 @@ open class ArchitectPluginExtension(val project: Project) {
             }
         }
     }
-    
+
     fun compileOnly() {
         if (compileOnly) {
             throw IllegalStateException("compileOnly() can only be called once for project ${project.path}!")
@@ -99,16 +100,26 @@ open class ArchitectPluginExtension(val project: Project) {
     }
 
     fun properties(platform: String): Map<String, String> {
-        return mapOf(
+        val map = mutableMapOf(
             BuiltinProperties.MIXIN_MAPPINGS to loom.allMixinMappings.joinToString(File.pathSeparator),
             BuiltinProperties.INJECT_INJECTABLES to injectInjectables.toString(),
             BuiltinProperties.UNIQUE_IDENTIFIER to project.projectUniqueIdentifier(),
             BuiltinProperties.COMPILE_CLASSPATH to getCompileClasspath().joinToString(File.pathSeparator),
-            BuiltinProperties.MAPPINGS_WITH_SRG to loom.tinyMappingsWithSrg.toString(),
             BuiltinProperties.PLATFORM_NAME to platform,
-            BuiltinProperties.REFMAP_NAME to loom.refmapName,
             BuiltinProperties.MCMETA_VERSION to "4"
         )
+
+        if (platform != "neoforge") {
+            if (platform == "forge" && !loom.addRefmapForForge) {
+                map[BuiltinProperties.FORGE_FIX_MIXINS] = "false"
+            } else if (loom.legacyMixinApEnabled) {
+                map[BuiltinProperties.REFMAP_NAME] = loom.refmapName
+            }
+
+            map[BuiltinProperties.MAPPINGS_WITH_SRG] = loom.tinyMappingsWithSrg.toString()
+        }
+
+        return map
     }
 
     fun prepareTransformer() {
@@ -121,6 +132,15 @@ open class ArchitectPluginExtension(val project: Project) {
                                 .forEach { pair ->
                                     writer.write(file.toPath(), pair.clazz, pair.properties)
                                 }
+                        }
+
+                        if (transform.name == "neoforge") {
+                            project.configurations.getByName("developmentForgeLike").forEach { file ->
+                                (transform.transformers.map { it.apply(file.toPath()) } + ModLoader.applyNeoForgeForgeLikeDev(loom, transform))
+                                    .forEach { pair ->
+                                        writer.write(file.toPath(), pair.clazz, pair.properties)
+                                    }
+                            }
                         }
                     }
                 }
@@ -146,9 +166,13 @@ open class ArchitectPluginExtension(val project: Project) {
 
     fun transform(name: String, action: Action<Transform>) {
         transforms.getOrPut(name) {
-            Transform(project, "development" + name.capitalize()).also { transform ->
+            Transform(project, name, "development" + (if (name == "neoforge") "NeoForge" else name.capitalize())).also { transform ->
                 if (!compileOnly) {
                     project.configurations.maybeCreate(transform.devConfigName)
+
+                    if (name == "neoforge") {
+                        project.configurations.maybeCreate("developmentForgeLike")
+                    }
                 }
                 action.execute(transform)
 
@@ -235,6 +259,11 @@ open class ArchitectPluginExtension(val project: Project) {
     }
 
     @JvmOverloads
+    fun neoForge(action: Action<Transform> = Action {}) {
+        loader(ModLoader.NEOFORGE, action)
+    }
+
+    @JvmOverloads
     fun loader(id: String, action: Action<Transform> = Action {}) {
         loader(ModLoader.valueOf(id), action)
     }
@@ -256,9 +285,16 @@ open class ArchitectPluginExtension(val project: Project) {
 
     data class CommonSettings(
         val loaders: MutableSet<ModLoader> = LinkedHashSet(),
+        val platformPackages: MutableMap<ModLoader, String> = mutableMapOf(),
+        var isForgeLike: Boolean = false,
+        val extraForgeLikeToNeoForgeRemaps: MutableMap<String, String> = mutableMapOf(),
     ) {
         constructor(loaders: Array<String>) : this() {
             this.loaders.addAll(loaders.map { ModLoader.valueOf(it) })
+        }
+
+        fun remapForgeLike(remap: String, to: String) {
+            extraForgeLikeToNeoForgeRemaps[remap] = to
         }
 
         @Deprecated("Use add and remove directly")
@@ -298,6 +334,14 @@ open class ArchitectPluginExtension(val project: Project) {
 
         fun clear() {
             loaders.clear()
+        }
+
+        fun platformPackage(loader: String, packageName: String) {
+            platformPackages[ModLoader.valueOf(loader)] = packageName
+        }
+
+        fun platformPackage(loader: ModLoader, packageName: String) {
+            platformPackages[loader] = packageName
         }
     }
 
@@ -370,6 +414,7 @@ open class ArchitectPluginExtension(val project: Project) {
             }
         }
 
+        val buildTask = project.tasks.getByName("build")
         val jarTask = project.tasks.getByName("jar") {
             it as AbstractArchiveTask
             it.archiveClassifier.set("dev")
@@ -377,17 +422,25 @@ open class ArchitectPluginExtension(val project: Project) {
 
         for (loader in settings.loaders) {
             project.configurations.maybeCreate("transformProduction${loader.titledId}")
-            project.tasks.create("transformProduction${loader.titledId}", TransformingTask::class.java) {
-                it.group = "Architectury"
-                it.platform = loader.id
-                loader.transformProduction(it, loom)
+            val transformProductionTask =
+                project.tasks.register("transformProduction${loader.titledId}", TransformingTask::class.java) {
+                    it.group = "Architectury"
+                    it.platform = loader.id
+                    loader.transformProduction(it, loom, settings)
 
-                it.archiveClassifier.set("transformProduction${loader.titledId}")
-                it.input.set(jarTask.archiveFile)
+                    if (settings.isForgeLike && loader.id == "neoforge") {
+                        it.addPost(applyNeoForgeForgeLikeProd(loom, settings))
+                    }
 
-                project.artifacts.add("transformProduction${loader.titledId}", it)
-                it.dependsOn(jarTask)
-            }
+                    it.archiveClassifier.set("transformProduction${loader.titledId}")
+                    it.input.set(jarTask.archiveFile)
+
+                    project.artifacts.add("transformProduction${loader.titledId}", it)
+                    it.dependsOn(jarTask)
+                    buildTask.dependsOn(it)
+                }
+
+            transformProductionTask.get().archiveFile.get().asFile.takeUnless { it.exists() }?.createEmptyJar()
         }
 
         project.tasks.getByName("remapJar") {
@@ -414,6 +467,22 @@ open class ArchitectPluginExtension(val project: Project) {
             })
         }
     }
+
+    fun forgeLike(action: Action<CommonSettings>) {
+        common {
+            clear()
+            isForgeLike = true
+            action.execute(this)
+        }
+    }
+
+    @JvmOverloads
+    fun forgeLike(platforms: Iterable<String>, action: CommonSettings.() -> Unit = {}) {
+        forgeLike {
+            it.add(platforms)
+            action(it)
+        }
+    }
 }
 
 private fun File.createEmptyJar() {
@@ -423,10 +492,17 @@ private fun File.createEmptyJar() {
 
 data class Transform(
     val project: Project,
+    val name: String,
     val devConfigName: String,
     val transformers: MutableList<Function<Path, TransformerPair>> = mutableListOf(),
-    var envAnnotationProvider: String = "net.fabricmc:fabric-loader:+"
+    var envAnnotationProvider: String = "net.fabricmc:fabric-loader:+",
+    var platformPackage: String? = null,
+    val extraForgeLikeToNeoForgeRemaps: MutableMap<String, String> = mutableMapOf(),
 ) {
+    fun remapForgeLike(remap: String, to: String) {
+        extraForgeLikeToNeoForgeRemaps[remap] = to
+    }
+
     operator fun plusAssign(transformer: TransformerPair) {
         transformers.add(Function { transformer })
     }
